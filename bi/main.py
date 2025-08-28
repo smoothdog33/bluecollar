@@ -1,6 +1,4 @@
-import spark
 from pyspark.shell import spark
-from pyspark.sql import SparkSession
 
 
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType, DoubleType, IntegerType
