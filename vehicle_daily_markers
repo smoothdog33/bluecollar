@@ -1,0 +1,83 @@
+CREATE VIEW glue_database_bi_bluecollar.vehicle_daily_markers AS
+WITH
+  daily_reference AS (
+   SELECT
+     trim(BOTH FROM split_part(techs, ',', 1)) assigned_tech
+   , DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) activity_date
+   , date_trunc('day', MIN(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')))) day_start_midnight
+   FROM
+     glue_database_bi_bluecollar.job_activity
+   WHERE (TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) IS NOT NULL)
+   GROUP BY trim(BOTH FROM split_part(techs, ',', 1)), DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')))
+) 
+, clock_events AS (
+   SELECT
+     epr.employee assigned_tech
+   , DATE(TRY(date_parse(epr.date, '%m/%d/%Y'))) activity_date
+   , TRY(date_parse(concat(concat(epr.date, ' '), epr.in_time), '%m/%d/%Y %I:%i %p')) event_time
+   , 'Clock In' marker_type
+   FROM
+     glue_database_bi_bluecollar.employee_payroll_report_fixed epr
+   WHERE (epr.in_time IS NOT NULL)
+UNION ALL    SELECT
+     epr.employee assigned_tech
+   , DATE(TRY(date_parse(epr.date, '%m/%d/%Y'))) activity_date
+   , TRY(date_parse(concat(concat(epr.date, ' '), epr.out_time), '%m/%d/%Y %I:%i %p')) event_time
+   , 'Clock Out' marker_type
+   FROM
+     glue_database_bi_bluecollar.employee_payroll_report_fixed epr
+   WHERE (epr.out_time IS NOT NULL)
+) 
+, ignition_events AS (
+   SELECT
+     assigned_tech
+   , DATE(TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p'))) activity_date
+   , TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p')) event_time
+   , 'Ignition On' marker_type
+   FROM
+     glue_database_bi_bluecollar.fleet_tracking_report
+   WHERE (TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p')) IS NOT NULL)
+UNION ALL    SELECT
+     assigned_tech
+   , DATE(TRY(date_parse(lower(ignition_off_time), '%m/%d/%Y %I:%i %p'))) activity_date
+   , TRY(date_parse(lower(ignition_off_time), '%m/%d/%Y %I:%i %p')) event_time
+   , 'Ignition Off' marker_type
+   FROM
+     glue_database_bi_bluecollar.fleet_tracking_report
+   WHERE (TRY(date_parse(lower(ignition_off_time), '%m/%d/%Y %I:%i %p')) IS NOT NULL)
+) 
+, last_job AS (
+   SELECT
+     trim(BOTH FROM split_part(techs, ',', 1)) assigned_tech
+   , DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) activity_date
+   , MAX(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) event_time
+   , 'Last Job Completed' marker_type
+   FROM
+     glue_database_bi_bluecollar.job_activity
+   WHERE ((lower(activity) LIKE '%completed%') AND (TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) IS NOT NULL))
+   GROUP BY trim(BOTH FROM split_part(techs, ',', 1)), DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')))
+) 
+, all_markers AS (
+   SELECT *
+   FROM
+     clock_events
+UNION ALL    SELECT *
+   FROM
+     ignition_events
+UNION ALL    SELECT *
+   FROM
+     last_job
+) 
+SELECT
+  am.assigned_tech
+, am.activity_date
+, CONCAT(am.assigned_tech, ' - ', date_format(am.activity_date, '%m/%d/%Y')) tech_date_label
+, am.event_time
+, am.marker_type
+, (CAST(hour(am.event_time) AS DOUBLE) + (CAST(minute(am.event_time) AS DOUBLE) / 6E1)) hour_of_day
+, date_format(am.event_time, '%h:%i %p') time_12hr
+, 1 marker_value
+FROM
+  all_markers am
+WHERE (am.event_time IS NOT NULL)
+ORDER BY am.assigned_tech ASC, am.activity_date ASC, am.event_time ASC
