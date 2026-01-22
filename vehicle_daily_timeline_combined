@@ -1,0 +1,37 @@
+CREATE VIEW glue_database_bi_bluecollar.vehicle_daily_timeline_combined AS
+WITH
+  job_data AS (
+   SELECT
+     assigned_tech
+   , activity_date
+   , tech_date_label
+   , job_label
+   , start_hour
+   , duration_hours
+   , start_ts
+   , end_ts
+   , 'Job' record_type
+   FROM
+     vehicle_daily_jobs_timeline
+) 
+, marker_data AS (
+   SELECT
+     assigned_tech
+   , activity_date
+   , tech_date_label
+   , marker_type job_label
+   , hour_of_day start_hour
+   , 5E-2 duration_hours
+   , event_time start_ts
+   , event_time end_ts
+   , 'Marker' record_type
+   FROM
+     vehicle_daily_markers
+) 
+SELECT *
+FROM
+  job_data
+UNION ALL SELECT *
+FROM
+  marker_data
+ORDER BY assigned_tech ASC, activity_date ASC, start_hour ASC
