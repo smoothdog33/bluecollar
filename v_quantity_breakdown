@@ -1,0 +1,20 @@
+CREATE VIEW glue_database_bi_bluecollar.v_quantity_breakdown AS
+SELECT
+  SUM((CASE WHEN (trim(BOTH FROM latest_status) IN ('Completed', 'Partially Completed')) THEN 1 ELSE 0 END)) completed_count
+, SUM((CASE WHEN (NOT (trim(BOTH FROM latest_status) IN ('Completed', 'Partially Completed'))) THEN 1 ELSE 0 END)) uncompleted_count
+FROM
+  (
+   SELECT
+     job_id
+   , event_status latest_status
+   FROM
+     (
+      SELECT
+        job_id
+      , event_status
+      , ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY event_date_times DESC) rn
+      FROM
+        v_individual_tech_report
+   )  t
+   WHERE (rn = 1)
+)  latest
