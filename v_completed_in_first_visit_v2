@@ -1,0 +1,13 @@
+CREATE VIEW glue_database_bi_bluecollar.v_completed_in_first_visit_v2 AS
+SELECT
+  v_individual_tech_report_v2.job_id
+, min(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p')) job_start_date
+, max(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p')) job_end_date
+, date_diff('day', min(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p')), max(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p'))) days_for_job
+, v_individual_tech_report_v2.first_tech
+FROM
+  (v_individual_tech_report_v2
+LEFT JOIN v_clean_job_activity ON (v_individual_tech_report_v2.job_id = v_clean_job_activity.job_id))
+GROUP BY v_individual_tech_report_v2.job_id, v_clean_job_activity.first_tech, v_individual_tech_report_v2.first_tech
+HAVING ((date_diff('day', min(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p')), max(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p'))) = 0) OR (date_diff('day', min(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p')), max(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p'))) >= 90))
+ORDER BY date_diff('day', min(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p')), max(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p'))) DESC
