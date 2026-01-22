@@ -1,0 +1,22 @@
+CREATE VIEW glue_database_bi_bluecollar.v_average_response_time AS
+SELECT
+  started_or_dispatched_times.job_id
+, date_diff('minute', date_parse(time_of_activity, '%m/%d/%Y %I:%i %p'), date_parse(lowest_time, '%m/%d/%Y %I:%i %p')) total_minutes
+, lowest_time
+, CAST(date_parse(time_of_activity, '%m/%d/%Y %I:%i %p') AS date) time_of_activity
+FROM
+  ((
+   SELECT
+     job_id
+   , min(event_date_times) lowest_time
+   FROM
+     v_individual_tech_report
+   WHERE ((trim(BOTH FROM event_status) = 'Started') OR (trim(BOTH FROM event_status) = 'Dispatched'))
+   GROUP BY job_id
+)  started_or_dispatched_times
+INNER JOIN (
+   SELECT *
+   FROM
+     v_clean_job_activity
+   WHERE ((trim(BOTH FROM activity) = 'Job Created') AND (job_id <> '1041239905'))
+)  job_created ON (started_or_dispatched_times.job_id = job_created.job_id))
