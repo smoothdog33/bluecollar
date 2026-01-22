@@ -1,0 +1,4 @@
+CREATE VIEW glue_database_bi_bluecollar.v_total_jobs AS
+SELECT count(DISTINCT job_id) total_jobs
+FROM
+  v_clean_job_activity
