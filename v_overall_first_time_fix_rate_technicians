@@ -1,0 +1,52 @@
+CREATE VIEW glue_database_bi_bluecollar.v_overall_first_time_fix_rate_technicians AS
+WITH
+  parsed_events AS (
+   SELECT
+     job_id
+   , techassigned
+   , COALESCE(TRY(date_parse(upper(event_date_time), '%m/%d/%Y %h:%i %p')), TRY(date_parse(upper(event_date_time), '%m/%d/%Y'))) event_datetime
+   FROM
+     individual_tech_report
+   WHERE (event_date_time IS NOT NULL)
+) 
+, completed_in_first_visit AS (
+   SELECT
+     job_id
+   , techassigned
+   , MIN(event_datetime) job_start_date
+   , MAX(event_datetime) job_end_date
+   , date_diff('day', MIN(event_datetime), MAX(event_datetime)) days_for_job
+   FROM
+     parsed_events
+   GROUP BY job_id, techassigned
+   HAVING ((date_diff('day', MIN(event_datetime), MAX(event_datetime)) = 0) OR (date_diff('day', MIN(event_datetime), MAX(event_datetime)) >= 90))
+) 
+, jobs_completed AS (
+   SELECT
+     techassigned
+   , CAST(job_start_date AS date) job_date
+   , COUNT(DISTINCT job_id) total_jobs_finished_in_first_visit
+   FROM
+     completed_in_first_visit
+   GROUP BY techassigned, CAST(job_start_date AS date)
+) 
+, total_jobs AS (
+   SELECT
+     techassigned
+   , CAST(event_datetime AS date) job_date
+   , COUNT(DISTINCT job_id) total_jobs
+   FROM
+     parsed_events
+   GROUP BY techassigned, CAST(event_datetime AS date)
+) 
+SELECT
+  COALESCE(jcfv.techassigned, tj.techassigned) techassigned
+, COALESCE(jcfv.job_date, tj.job_date) job_date
+, COALESCE(jcfv.total_jobs_finished_in_first_visit, 0) total_jobs_finished_in_first_visit
+, tj.total_jobs
+, ROUND((CASE WHEN (tj.total_jobs = 0) THEN 0 ELSE ((jcfv.total_jobs_finished_in_first_visit * 1E2) / tj.total_jobs) END), 2) first_time_fix_rate_percent
+FROM
+  (jobs_completed jcfv
+RIGHT JOIN total_jobs tj ON ((jcfv.techassigned = tj.techassigned) AND (jcfv.job_date = tj.job_date)))
+WHERE (NOT (COALESCE(jcfv.job_date, tj.job_date) IN (DATE '2025-01-16', DATE '2025-01-17')))
+ORDER BY techassigned ASC, job_date ASC
