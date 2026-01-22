@@ -1,0 +1,62 @@
+CREATE VIEW glue_database_bi_bluecollar.vehicle_daily_jobs_bar AS
+WITH
+  job_base AS (
+   SELECT
+     trim(BOTH FROM split_part(techs, ',', 1)) assigned_tech
+   , DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) activity_date
+   , TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) activity_ts
+   , activity
+   , (CASE WHEN (lower(activity) LIKE '%started%') THEN 'started' WHEN (lower(activity) LIKE '%completed%') THEN 'completed' ELSE 'other' END) activity_type
+   FROM
+     glue_database_bi_bluecollar.job_activity
+   WHERE ((TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) IS NOT NULL) AND ((lower(activity) LIKE '%started%') OR (lower(activity) LIKE '%completed%')))
+) 
+, numbered_jobs AS (
+   SELECT
+     assigned_tech
+   , activity_date
+   , activity_ts
+   , activity
+   , activity_type
+   , ROW_NUMBER() OVER (PARTITION BY assigned_tech, activity_date ORDER BY activity_ts ASC) event_seq
+   FROM
+     job_base
+) 
+, daily_start AS (
+   SELECT
+     assigned_tech
+   , activity_date
+   , MIN(activity_ts) day_start
+   FROM
+     job_base
+   GROUP BY assigned_tech, activity_date
+) 
+, job_with_next AS (
+   SELECT
+     nj.assigned_tech
+   , nj.activity_date
+   , nj.activity_ts
+   , nj.activity_type
+   , nj.event_seq
+   , LEAD(nj.activity_ts) OVER (PARTITION BY nj.assigned_tech, nj.activity_date ORDER BY nj.activity_ts ASC) next_ts
+   , LEAD(nj.activity_type) OVER (PARTITION BY nj.assigned_tech, nj.activity_date ORDER BY nj.activity_ts ASC) next_activity_type
+   , ds.day_start
+   FROM
+     (numbered_jobs nj
+   INNER JOIN daily_start ds ON ((nj.assigned_tech = ds.assigned_tech) AND (nj.activity_date = ds.activity_date)))
+) 
+SELECT
+  assigned_tech
+, activity_date
+, activity_ts job_event_time
+, (CASE WHEN ((activity_type = 'started') AND (next_activity_type = 'completed')) THEN next_ts ELSE date_add('minute', 15, activity_ts) END) job_end_time
+, CONCAT(activity_type, ' #', CAST(event_seq AS VARCHAR)) job_label
+, event_seq job_seq
+, activity_type
+, (date_diff('minute', day_start, activity_ts) / 6E1) start_hours_from_day_start
+, (CASE WHEN ((activity_type = 'started') AND (next_activity_type = 'completed')) THEN (date_diff('minute', activity_ts, next_ts) / 6E1) ELSE 2.5E-1 END) job_duration_hours
+, CAST(activity_ts AS VARCHAR) start_time_display
+, (CASE WHEN ((activity_type = 'started') AND (next_activity_type = 'completed')) THEN CAST(next_ts AS VARCHAR) ELSE CAST(date_add('minute', 15, activity_ts) AS VARCHAR) END) end_time_display
+FROM
+  job_with_next
+ORDER BY assigned_tech ASC, activity_date ASC, activity_ts ASC
