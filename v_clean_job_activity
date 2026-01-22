@@ -1,0 +1,11 @@
+CREATE VIEW glue_database_bi_bluecollar.v_clean_job_activity AS
+SELECT
+  job_id
+, activity
+, time_of_activity
+, techs
+, job_date
+, split_part(techs, ',', 1) first_tech
+FROM
+  job_activity
+GROUP BY job_id, activity, time_of_activity, techs, job_date, split_part(techs, ',', 1)
