@@ -1,0 +1,11 @@
+CREATE VIEW glue_database_bi_bluecollar.v_work_order_status_summary AS
+SELECT
+  job_id
+, TRY(DATE_PARSE(job_date, '%m/%d/%Y')) job_date
+, TRY(DATE_PARSE(time_of_activity, '%m/%d/%Y %h:%i %p')) time_of_activity
+, activity
+, (CASE WHEN (LOWER(activity) LIKE '%estimate%') THEN 'Estimate' WHEN (LOWER(activity) LIKE '%parts ordered%') THEN 'Parts Ordered' WHEN (LOWER(activity) LIKE '%paused%') THEN 'Paused' WHEN (LOWER(activity) LIKE '%completed%') THEN 'Completed' END) activity_type
+, (CASE WHEN (LOWER(activity) LIKE '%estimate created%') THEN 'Estimate Created' WHEN (LOWER(activity) LIKE '%estimate updated%') THEN 'Estimate Updated' WHEN (LOWER(activity) LIKE '%estimate emailed%') THEN 'Estimate Emailed' WHEN (LOWER(activity) LIKE '%estimate sent%') THEN 'Estimate Sent' WHEN (LOWER(activity) LIKE '%estimate%') THEN 'Other Estimate' ELSE null END) estimate_detail_type
+FROM
+  job_activity
+WHERE ((LOWER(activity) LIKE '%estimate%') OR (LOWER(activity) LIKE '%parts ordered%') OR (LOWER(activity) LIKE '%paused%') OR (LOWER(activity) LIKE '%completed%'))
