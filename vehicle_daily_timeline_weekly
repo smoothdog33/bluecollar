@@ -1,0 +1,47 @@
+CREATE VIEW glue_database_bi_bluecollar.vehicle_daily_timeline_weekly AS
+WITH
+  job_data AS (
+   SELECT
+     assigned_tech
+   , activity_date
+   , date_trunc('week', activity_date) week_start
+   , format_datetime(date_trunc('week', activity_date), 'yyyy-MM-dd') week_label
+   , format_datetime(activity_date, 'yyyy-MM-dd') day_label
+   , format_datetime(activity_date, 'EEEE') day_of_week
+   , tech_date_label
+   , job_label
+   , start_hour
+   , CAST(hour(start_ts) AS INTEGER) hour_0_23
+   , duration_hours
+   , start_ts
+   , end_ts
+   , 'Job' record_type
+   FROM
+     vehicle_daily_jobs_timeline
+) 
+, marker_data AS (
+   SELECT
+     assigned_tech
+   , activity_date
+   , date_trunc('week', activity_date) week_start
+   , format_datetime(date_trunc('week', activity_date), 'yyyy-MM-dd') week_label
+   , format_datetime(activity_date, 'yyyy-MM-dd') day_label
+   , format_datetime(activity_date, 'EEEE') day_of_week
+   , tech_date_label
+   , marker_type job_label
+   , hour_of_day start_hour
+   , CAST(hour(event_time) AS INTEGER) hour_0_23
+   , 5E-2 duration_hours
+   , event_time start_ts
+   , event_time end_ts
+   , 'Marker' record_type
+   FROM
+     vehicle_daily_markers
+) 
+SELECT *
+FROM
+  job_data
+UNION ALL SELECT *
+FROM
+  marker_data
+ORDER BY assigned_tech ASC, activity_date ASC, start_hour ASC
