@@ -1,0 +1,9 @@
+CREATE VIEW glue_database_bi_bluecollar.v_missin_job_ids_in_job_activity AS
+SELECT
+  itr.job_id
+, "event_date_times"
+FROM
+  ("v_individual_tech_report" itr
+LEFT JOIN "job_activity" ja ON (itr.job_id = ja.job_id))
+WHERE (ja.job_id IS NULL)
+GROUP BY 1, 2
