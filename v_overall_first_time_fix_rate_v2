@@ -1,0 +1,27 @@
+CREATE VIEW glue_database_bi_bluecollar.v_overall_first_time_fix_rate_v2 AS
+SELECT *
+FROM
+  ((
+   SELECT
+     count(DISTINCT job_id) total_jobs_finished_in_first_visit
+   , CAST(job_start_date AS date) job_date
+   FROM
+     v_completed_in_first_visit
+   GROUP BY CAST(job_start_date AS date)
+)  jobs_completed_in_first_visit
+RIGHT JOIN (
+   SELECT
+     count(DISTINCT job_id) total_jobs
+   , CAST(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p') AS date) total_job_date
+   FROM
+     (
+      SELECT
+        job_id
+      , min(event_date_times) event_date_times
+      FROM
+        v_individual_tech_report
+      GROUP BY job_id
+   )  a
+   GROUP BY CAST(date_parse(upper("event_date_times"), '%m/%d/%Y %h:%i %p') AS date)
+)  total_jobs ON (jobs_completed_in_first_visit.job_date = total_jobs.total_job_date))
+WHERE (NOT (CAST(job_date AS varchar) IN ('2025-01-16', '2025-01-17')))
