@@ -1,0 +1,69 @@
+CREATE VIEW glue_database_bi_bluecollar.vehicle_daily_summary_exploded AS
+WITH
+  ft AS (
+   SELECT
+     assigned_tech
+   , DATE(TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p'))) activity_date
+   , MIN(TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p'))) first_ignition_on_ts
+   , MAX(TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p'))) last_ignition_on_ts
+   , MAX(TRY(date_parse(lower(ignition_off_time), '%m/%d/%Y %I:%i %p'))) last_ignition_off_ts
+   , LISTAGG(CAST(TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p')) AS VARCHAR), ', ' ON OVERFLOW  ERROR) WITHIN GROUP (ORDER BY TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p')) ASC) ignition_on_timestamps
+   , LISTAGG(CAST(TRY(date_parse(lower(ignition_off_time), '%m/%d/%Y %I:%i %p')) AS VARCHAR), ', ' ON OVERFLOW  ERROR) WITHIN GROUP (ORDER BY TRY(date_parse(lower(ignition_off_time), '%m/%d/%Y %I:%i %p')) ASC) ignition_off_timestamps
+   FROM
+     glue_database_bi_bluecollar.fleet_tracking_report
+   GROUP BY assigned_tech, DATE(TRY(date_parse(lower(ignition_on_time), '%m/%d/%Y %I:%i %p')))
+) 
+, job_agg AS (
+   SELECT
+     trim(BOTH FROM split_part(techs, ',', 1)) assigned_tech
+   , DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) activity_date
+   , LISTAGG((CASE WHEN (lower(activity) LIKE '%started%') THEN CAST(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) AS VARCHAR) END), ', ' ON OVERFLOW  ERROR) WITHIN GROUP (ORDER BY TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) ASC) job_started_timestamps
+   , LISTAGG((CASE WHEN (lower(activity) LIKE '%completed%') THEN CAST(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) AS VARCHAR) END), ', ' ON OVERFLOW  ERROR) WITHIN GROUP (ORDER BY TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) ASC) job_completed_timestamps
+   , MAX((CASE WHEN (lower(activity) LIKE '%completed%') THEN TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) END)) last_completed_ts
+   FROM
+     glue_database_bi_bluecollar.job_activity
+   GROUP BY trim(BOTH FROM split_part(techs, ',', 1)), DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')))
+) 
+, ft_exploded AS (
+   SELECT
+     assigned_tech
+   , activity_date
+   , first_ignition_on_ts
+   , last_ignition_on_ts
+   , last_ignition_off_ts
+   , epr.in_time clock_in_time
+   , t.ignition_on_ts
+   , f.ignition_off_ts
+   FROM
+     (((ft
+   LEFT JOIN glue_database_bi_bluecollar.employee_payroll_report_fixed epr ON ((epr.employee = ft.assigned_tech) AND (DATE(TRY(date_parse(epr.date, '%m/%d/%Y'))) = ft.activity_date)))
+   CROSS JOIN UNNEST(split(ignition_on_timestamps, ',')) t (ignition_on_ts))
+   CROSS JOIN UNNEST(split(ignition_off_timestamps, ',')) f (ignition_off_ts))
+) 
+, job_exploded AS (
+   SELECT
+     assigned_tech
+   , activity_date
+   , last_completed_ts
+   , j.job_started_ts
+   , k.job_completed_ts
+   FROM
+     ((job_agg
+   CROSS JOIN UNNEST(split(job_started_timestamps, ',')) j (job_started_ts))
+   CROSS JOIN UNNEST(split(job_completed_timestamps, ',')) k (job_completed_ts))
+) 
+SELECT
+  j.last_completed_ts date
+, f.assigned_tech
+, ROUND(date_diff('minute', f.first_ignition_on_ts, j.last_completed_ts), 2) ignition_on_to_last_job_completed_minutes
+, ROUND(date_diff('minute', j.last_completed_ts, f.last_ignition_off_ts), 2) last_job_completed_to_ignition_off_minutes
+, ROUND(date_diff('minute', f.first_ignition_on_ts, f.last_ignition_on_ts), 2) ignition_on_to_last_ignition_on_minutes
+, j.job_started_ts job_started_timestamp
+, j.job_completed_ts job_completed_timestamp
+, f.ignition_on_ts
+, f.ignition_off_ts
+, f.clock_in_time
+FROM
+  (ft_exploded f
+INNER JOIN job_exploded j ON ((f.assigned_tech = j.assigned_tech) AND (f.activity_date = j.activity_date)))
+ORDER BY j.last_completed_ts ASC, f.assigned_tech ASC
