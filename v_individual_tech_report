@@ -1,0 +1,8 @@
+CREATE VIEW glue_database_bi_bluecollar.v_individual_tech_report AS
+SELECT
+  substring(COALESCE(job_id, jobnumber, jobstartdate), 8, 10) job_id
+, substring(event_date_time, 14, 19) event_date_times
+, substring(event_status, 7, 25) event_status
+FROM
+  individual_tech_report
+WHERE ((job_id IS NOT NULL) AND (event_status LIKE 'EVENT:%'))
