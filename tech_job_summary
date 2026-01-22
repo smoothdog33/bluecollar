@@ -1,0 +1,20 @@
+CREATE VIEW glue_database_bi_bluecollar.tech_job_summary AS
+WITH
+  ranked_jobs AS (
+   SELECT
+     job_id
+   , event_date_times
+   , trim(BOTH FROM UPPER(event_status)) event_status
+   , ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY (CASE WHEN (trim(BOTH FROM UPPER(event_status)) = 'COMPLETED') THEN 1 WHEN (trim(BOTH FROM UPPER(event_status)) = 'PAUSED') THEN 2 ELSE 3 END) ASC, event_date_times ASC) rn
+   FROM
+     v_individual_tech_report
+   WHERE (trim(BOTH FROM UPPER(event_status)) IN ('PAUSED', 'COMPLETED'))
+) 
+SELECT
+  job_id
+, event_date_times
+, event_status
+FROM
+  ranked_jobs
+WHERE (rn = 1)
+ORDER BY event_date_times ASC
