@@ -1,0 +1,21 @@
+CREATE VIEW glue_database_bi_bluecollar.tech_utilization AS
+WITH
+  weekly_hours AS (
+   SELECT
+     employee
+   , year(date_parse("date", '%m/%d/%Y')) work_year
+   , week_of_year(date_parse("date", '%m/%d/%Y')) work_week
+   , SUM(total_hours_decimal) total_weekly_hours
+   FROM
+     glue_database_bi_bluecollar.employee_payroll_report_fixed
+   GROUP BY employee, year(date_parse("date", '%m/%d/%Y')), week_of_year(date_parse("date", '%m/%d/%Y'))
+) 
+SELECT
+  employee
+, work_year
+, work_week
+, AVG(total_weekly_hours) avg_weekly_hours
+FROM
+  weekly_hours
+GROUP BY employee, work_year, work_week
+ORDER BY employee ASC
