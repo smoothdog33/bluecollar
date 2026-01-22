@@ -1,0 +1,50 @@
+CREATE VIEW glue_database_bi_bluecollar.vehicle_daily_jobs_timeline AS
+WITH
+  job_started AS (
+   SELECT
+     trim(BOTH FROM split_part(techs, ',', 1)) assigned_tech
+   , DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) activity_date
+   , TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) start_ts
+   , ROW_NUMBER() OVER (PARTITION BY trim(BOTH FROM split_part(techs, ',', 1)), DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) ORDER BY TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) ASC) job_num
+   FROM
+     glue_database_bi_bluecollar.job_activity
+   WHERE ((lower(activity) LIKE '%started%') AND (TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) IS NOT NULL))
+) 
+, job_completed AS (
+   SELECT
+     trim(BOTH FROM split_part(techs, ',', 1)) assigned_tech
+   , DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) activity_date
+   , TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) end_ts
+   , ROW_NUMBER() OVER (PARTITION BY trim(BOTH FROM split_part(techs, ',', 1)), DATE(TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p'))) ORDER BY TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) ASC) job_num
+   FROM
+     glue_database_bi_bluecollar.job_activity
+   WHERE ((lower(activity) LIKE '%completed%') AND (TRY(date_parse(lower(time_of_activity), '%m/%d/%Y %I:%i %p')) IS NOT NULL))
+) 
+, matched_jobs AS (
+   SELECT
+     COALESCE(s.assigned_tech, c.assigned_tech) assigned_tech
+   , COALESCE(s.activity_date, c.activity_date) activity_date
+   , COALESCE(s.job_num, c.job_num) job_num
+   , s.start_ts
+   , c.end_ts
+   , COALESCE(s.start_ts, c.end_ts) event_ts
+   FROM
+     (job_started s
+   FULL JOIN job_completed c ON ((s.assigned_tech = c.assigned_tech) AND (s.activity_date = c.activity_date) AND (s.job_num = c.job_num)))
+) 
+SELECT
+  assigned_tech
+, activity_date
+, CONCAT(assigned_tech, ' - ', date_format(activity_date, '%m/%d/%Y')) tech_date_label
+, job_num
+, CONCAT('Job ', CAST(job_num AS VARCHAR)) job_label
+, start_ts
+, COALESCE(end_ts, date_add('minute', 30, start_ts)) end_ts
+, (CAST(hour(COALESCE(start_ts, end_ts)) AS DOUBLE) + (CAST(minute(COALESCE(start_ts, end_ts)) AS DOUBLE) / 6E1)) start_hour
+, (CASE WHEN ((start_ts IS NOT NULL) AND (end_ts IS NOT NULL)) THEN (date_diff('minute', start_ts, end_ts) / 6E1) ELSE 5E-1 END) duration_hours
+, date_format(COALESCE(start_ts, end_ts), '%h:%i %p') start_time_display
+, date_format(COALESCE(end_ts, date_add('minute', 30, start_ts)), '%h:%i %p') end_time_display
+FROM
+  matched_jobs
+WHERE (event_ts IS NOT NULL)
+ORDER BY assigned_tech ASC, activity_date ASC, job_num ASC
