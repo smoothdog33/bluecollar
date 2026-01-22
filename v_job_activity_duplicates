@@ -1,0 +1,15 @@
+CREATE VIEW glue_database_bi_bluecollar.v_job_activity_duplicates AS
+SELECT
+  job_id
+, activity
+, time_of_activity
+, job_date
+, customer_name
+, parent_customer_name
+, job_description
+, "user"
+, techs
+FROM
+  job_activity
+GROUP BY job_id, activity, time_of_activity, job_date, customer_name, parent_customer_name, job_description, "user", techs
+HAVING (count(*) > 1)
