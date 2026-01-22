@@ -1,0 +1,7 @@
+CREATE VIEW glue_database_bi_bluecollar.total_completed_jobs AS
+SELECT DISTINCT
+  job_id
+, CAST(date_parse(event_date_times, '%m/%d/%Y %I:%i %p') AS date) date_completed
+FROM
+  v_individual_tech_report
+WHERE (upper(trim(BOTH FROM event_status)) = 'COMPLETED')
