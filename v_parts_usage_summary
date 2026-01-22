@@ -1,0 +1,8 @@
+CREATE VIEW glue_database_bi_bluecollar.v_parts_usage_summary AS
+SELECT
+  CAST(parse_datetime(created_at, 'MM/dd/yyyy hh:mm a') AS date) created_date
+, SUM((CASE WHEN (purchase_orders IS NOT NULL) THEN 1 ELSE 0 END)) ordered
+, SUM((CASE WHEN (purchase_orders IS NULL) THEN 1 ELSE 0 END)) used_from_inventory_or_truck_stock
+FROM
+  all_inventory
+GROUP BY CAST(parse_datetime(created_at, 'MM/dd/yyyy hh:mm a') AS date)
